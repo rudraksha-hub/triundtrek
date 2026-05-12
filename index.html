@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trip Gallery</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0e0e0f; --surface: #161618; --card: #1c1c1f;
+    --border: rgba(255,255,255,0.08); --border-hover: rgba(255,255,255,0.18);
+    --text: #f0ede8; --muted: #7a7872; --accent: #c9a96e;
+    --accent-dim: rgba(201,169,110,0.15); --red: #e05252; --green: #5db882;
+    --radius: 12px; --radius-lg: 18px;
+  }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+  /* SIDEBAR */
+  #sidebar { position: fixed; top: 0; left: 0; width: 260px; height: 100vh; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 10; overflow-y: auto; }
+  .logo { padding: 28px 24px 20px; border-bottom: 1px solid var(--border); }
+  .logo h1 { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 600; color: var(--accent); letter-spacing: 0.3px; }
+  .logo .tagline { font-size: 11px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; display: block; margin-top: 2px; }
+  .logo .by-rudraksha { font-size: 10px; color: rgba(201,169,110,0.4); letter-spacing: 1px; text-transform: uppercase; display: block; margin-top: 5px; font-style: italic; }
+  #storage-bar-wrap { padding: 16px 24px; border-bottom: 1px solid var(--border); }
+  .storage-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); letter-spacing: 0.5px; margin-bottom: 8px; }
+  .bar-track { height: 4px; background: rgba(255,255,255,0.07); border-radius: 2px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.4s ease; width: 0%; }
+  .trips-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 10px; }
+  .trips-header span { font-size: 11px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; }
+  .icon-btn { background: none; border: 1px solid var(--border); color: var(--accent); width: 28px; height: 28px; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .icon-btn:hover { background: var(--accent-dim); border-color: var(--accent); }
+  #trips-list { flex: 1; overflow-y: auto; padding: 4px 12px 20px; }
+  .trip-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; cursor: pointer; transition: all 0.18s; margin-bottom: 2px; }
+  .trip-item:hover { background: rgba(255,255,255,0.04); }
+  .trip-item.active { background: var(--accent-dim); }
+  .trip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; opacity: 0.5; }
+  .trip-item.active .trip-dot { opacity: 1; }
+  .trip-name { font-size: 13.5px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); transition: color 0.18s; }
+  .trip-item.active .trip-name, .trip-item:hover .trip-name { color: var(--text); }
+  .trip-count { font-size: 11px; color: var(--muted); background: rgba(255,255,255,0.06); padding: 2px 7px; border-radius: 20px; }
+  .trip-del { opacity: 0; background: none; border: none; color: var(--red); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 4px; transition: opacity 0.2s; }
+  .trip-item:hover .trip-del { opacity: 1; }
+  .all-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; cursor: pointer; margin-bottom: 8px; font-size: 13.5px; transition: all 0.18s; color: var(--muted); }
+  .all-item:hover, .all-item.active { background: var(--accent-dim); color: var(--text); }
+  .all-item svg { width: 14px; height: 14px; opacity: 0.6; }
+
+  /* MAIN */
+  #main { margin-left: 260px; min-height: 100vh; display: flex; flex-direction: column; }
+  #topbar { position: sticky; top: 0; z-index: 9; background: rgba(14,14,15,0.92); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); padding: 14px 28px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #topbar h2 { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 600; flex: 1; min-width: 100px; }
+  .subtitle { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px; border-radius: 10px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; border: none; white-space: nowrap; }
+  .btn-accent { background: var(--accent); color: #1a1208; }
+  .btn-accent:hover { background: #d9b87e; transform: translateY(-1px); }
+  .btn-ghost { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); }
+  .btn-ghost:hover { background: rgba(255,255,255,0.1); border-color: var(--border-hover); }
+  .btn-red { background: var(--red); color: #fff; border: none; }
+  .btn-red:hover { background: #f06060; transform: translateY(-1px); }
+  #content { flex: 1; padding: 32px; }
+
+  /* UPLOAD ZONE */
+  #drop-zone { border: 2px dashed rgba(201,169,110,0.25); border-radius: var(--radius-lg); padding: 40px 32px; text-align: center; cursor: pointer; transition: all 0.25s; margin-bottom: 28px; background: rgba(201,169,110,0.03); }
+  #drop-zone:hover, #drop-zone.dragging { border-color: var(--accent); background: var(--accent-dim); }
+  #drop-zone h3 { font-family: 'Playfair Display', serif; font-size: 18px; margin: 12px 0 8px; }
+  #drop-zone p { font-size: 13px; color: var(--muted); }
+  .upload-icon { font-size: 36px; }
+  #file-input, #video-input, #folder-input { display: none; }
+
+  /* EMPTY */
+  .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 80px 20px; text-align: center; }
+  .empty-icon { width: 64px; height: 64px; border-radius: 20px; background: var(--accent-dim); border: 1px dashed rgba(201,169,110,0.3); display: flex; align-items: center; justify-content: center; font-size: 28px; }
+  .empty h3 { font-family: 'Playfair Display', serif; font-size: 20px; }
+  .empty p { font-size: 14px; color: var(--muted); max-width: 320px; line-height: 1.6; }
+
+  /* SELECT BAR */
+  .select-bar { display: none; align-items: center; gap: 10px; padding: 11px 18px; margin-bottom: 20px; background: rgba(224,82,82,0.08); border: 1px solid rgba(224,82,82,0.25); border-radius: var(--radius); flex-wrap: wrap; }
+  .select-bar.active { display: flex; }
+  .select-bar span { font-size: 13px; color: var(--muted); flex: 1; min-width: 120px; }
+
+  /* GALLERY */
+  #gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+
+  /* MEDIA CARD */
+  .media-card { position: relative; border-radius: var(--radius); overflow: hidden; cursor: pointer; border: 1px solid var(--border); aspect-ratio: 1; background: var(--card); transition: transform 0.25s, border-color 0.25s; }
+  .media-card:hover { transform: translateY(-3px); border-color: var(--border-hover); }
+  .media-card img, .media-card video { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s; }
+  .media-card:hover img, .media-card:hover video { transform: scale(1.04); }
+  .shimmer { position: absolute; inset: 0; background: linear-gradient(90deg, var(--card) 25%, rgba(255,255,255,0.04) 50%, var(--card) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  .media-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.78) 0%, transparent 55%); opacity: 0; transition: opacity 0.25s; display: flex; flex-direction: column; justify-content: flex-end; padding: 12px; }
+  .media-card:hover .media-overlay { opacity: 1; }
+  .media-name { font-size: 12px; color: #fff; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .media-meta { font-size: 11px; color: rgba(255,255,255,0.55); margin-top: 2px; }
+  .video-badge { position: absolute; top: 9px; left: 9px; background: rgba(0,0,0,0.62); backdrop-filter: blur(4px); border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 5px; pointer-events: none; border: 1px solid rgba(255,255,255,0.15); letter-spacing: 0.5px; }
+  .play-tri { width: 0; height: 0; border-style: solid; border-width: 4px 0 4px 7px; border-color: transparent transparent transparent #fff; display: inline-block; }
+  .media-actions { position: absolute; top: 9px; right: 9px; display: flex; gap: 5px; opacity: 0; transition: opacity 0.25s; }
+  .media-card:hover .media-actions { opacity: 1; }
+  .pa-btn { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; transition: all 0.2s; border: none; backdrop-filter: blur(4px); }
+  .pa-btn.del { background: rgba(255,255,255,0.1); color: #fff; }
+  .pa-btn.del:hover { background: var(--red); }
+  .media-card.selected { border-color: var(--red) !important; box-shadow: 0 0 0 2px rgba(224,82,82,0.35); }
+  .select-check { position: absolute; top: 9px; left: 9px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.5); border: 2px solid rgba(255,255,255,0.5); display: none; align-items: center; justify-content: center; font-size: 12px; z-index: 5; transition: all 0.15s; backdrop-filter: blur(4px); }
+  .media-card.selectable .select-check { display: flex; }
+  .media-card.selected .select-check { background: var(--red); border-color: var(--red); color: #fff; }
+
+  /* MODAL */
+  .modal-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from{opacity:0}to{opacity:1} }
+  .modal { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 32px; width: 90%; max-width: 420px; animation: slideUp 0.25s ease; }
+  @keyframes slideUp { from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1} }
+  .modal h3 { font-family: 'Playfair Display', serif; font-size: 20px; margin-bottom: 20px; }
+  .modal input, .modal select { width: 100%; padding: 11px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; margin-bottom: 14px; outline: none; transition: border-color 0.2s; }
+  .modal input:focus, .modal select:focus { border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+
+  /* LIGHTBOX */
+  #lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.97); display: none; flex-direction: column; align-items: center; justify-content: center; }
+  #lightbox.open { display: flex; animation: fadeIn 0.18s ease; }
+  #lb-img { max-width: 90vw; max-height: 78vh; object-fit: contain; border-radius: 8px; display: none; }
+  #lb-video { max-width: 92vw; max-height: 78vh; border-radius: 8px; outline: none; display: none; background: #000; }
+  #lb-img.active, #lb-video.active { display: block; }
+  .lb-bar { display: flex; align-items: center; gap: 16px; padding: 16px 24px; width: 100%; max-width: 960px; justify-content: space-between; flex-wrap: wrap; }
+  .lb-info h4 { font-family: 'Playfair Display', serif; font-size: 18px; }
+  .lb-info p { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .lb-actions { display: flex; gap: 10px; }
+  .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 1px solid var(--border); color: #fff; font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; backdrop-filter: blur(4px); }
+  .lb-nav:hover { background: rgba(255,255,255,0.22); }
+  #lb-prev { left: 18px; } #lb-next { right: 18px; }
+
+  /* PROGRESS */
+  #progress-wrap { display: none; position: fixed; bottom: 0; left: 260px; right: 0; z-index: 50; background: var(--surface); border-top: 1px solid var(--border); padding: 13px 32px; align-items: center; gap: 16px; }
+  #progress-wrap.show { display: flex; }
+
+  /* TOAST */
+  #toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 22px; font-size: 13.5px; z-index: 999; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+  #toast.show { opacity: 1; }
+  #toast.success { border-color: var(--green); color: var(--green); }
+  #toast.info { border-color: var(--accent); color: var(--accent); }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+  @media (max-width: 768px) {
+    #sidebar { width: 220px; } #main { margin-left: 220px; }
+    #content { padding: 18px; } #topbar { padding: 12px 16px; }
+    #gallery { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+    #progress-wrap { left: 220px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+  <div class="logo">
+    <h1>✈ TripGallery</h1>
+    <span class="tagline">Your memories, forever</span>
+    <span class="by-rudraksha">by Rudraksha</span>
+  </div>
+  <div id="storage-bar-wrap">
+    <div class="storage-label"><span>Storage Used</span><span id="storage-used">0 MB / 15 GB</span></div>
+    <div class="bar-track"><div class="bar-fill" id="bar-fill"></div></div>
+  </div>
+  <div style="padding:12px 24px 6px">
+    <div class="all-item active" id="all-tab" onclick="showAll()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      All Media
+    </div>
+  </div>
+  <div class="trips-header">
+    <span>My Trips</span>
+    <button class="icon-btn" onclick="openNewTrip()" title="New trip">+</button>
+  </div>
+  <div id="trips-list"></div>
+</aside>
+
+<!-- MAIN -->
+<main id="main">
+  <header id="topbar">
+    <div style="flex:1;min-width:100px">
+      <h2 id="view-title">All Media</h2>
+      <div class="subtitle" id="view-subtitle">Loading…</div>
+    </div>
+    <button class="btn btn-ghost" id="dl-all-btn" onclick="downloadAll()" style="display:none">⬇ Download All</button>
+    <button class="btn btn-ghost" id="select-mode-btn" onclick="toggleSelectMode()" style="display:none">☑ Select</button>
+    <button class="btn btn-ghost" onclick="triggerUpload()">📷 Photos</button>
+    <button class="btn btn-ghost" onclick="triggerVideoUpload()">🎬 Videos</button>
+    <button class="btn btn-accent" onclick="triggerFolderUpload()">📁 Upload Folder</button>
+    <input type="file" id="file-input" multiple accept="image/*" onchange="handleFileSelect(this.files)">
+    <input type="file" id="video-input" multiple accept="video/*" onchange="handleFileSelect(this.files)">
+    <input type="file" id="folder-input" multiple accept="image/*,video/*" webkitdirectory mozdirectory onchange="handleFolderSelect(this.files)">
+  </header>
+
+  <div id="content">
+    <div id="drop-zone" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="handleDrop(event)">
+      <div class="upload-icon">📁</div>
+      <h3>Drop a folder, photos or videos here</h3>
+      <p>Supports images (JPG, PNG, WEBP…) and videos (MP4, MOV, WEBM…)</p>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="triggerUpload()">📷 Photos</button>
+        <button class="btn btn-ghost" onclick="triggerVideoUpload()">🎬 Videos</button>
+        <button class="btn btn-accent" onclick="triggerFolderUpload()">📁 Folder</button>
+      </div>
+    </div>
+
+    <div id="select-bar" class="select-bar">
+      <span id="select-count">Tap items to select</span>
+      <button class="btn btn-ghost" onclick="selectAll()">☑ Select All</button>
+      <button class="btn btn-ghost" onclick="deselectAll()">✕ Deselect All</button>
+      <button class="btn btn-red" onclick="deleteSelected()">🗑 Delete Selected</button>
+      <button class="btn btn-ghost" onclick="toggleSelectMode()">Cancel</button>
+    </div>
+
+    <div id="gallery"></div>
+    <div id="load-more-sentinel" style="height:1px"></div>
+    <div id="empty-state" class="empty" style="display:none">
+      <div class="empty-icon">🗺️</div>
+      <h3>No media yet</h3>
+      <p>Upload photos or videos to start building this trip's gallery.</p>
+    </div>
+  </div>
+</main>
+
+<!-- PROGRESS BAR -->
+<div id="progress-wrap">
+  <span style="font-size:13px;color:var(--muted);white-space:nowrap" id="prog-label">Importing…</span>
+  <div style="flex:1;height:4px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">
+    <div id="prog-fill" style="height:100%;background:var(--accent);border-radius:2px;transition:width 0.15s;width:0%"></div>
+  </div>
+  <span style="font-size:13px;font-weight:500;min-width:44px;text-align:right" id="prog-count">0%</span>
+</div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox">
+  <button class="lb-nav" id="lb-prev" onclick="navLight(-1)">&#8249;</button>
+  <button class="lb-nav" id="lb-next" onclick="navLight(1)">&#8250;</button>
+  <img id="lb-img" src="" alt="">
+  <video id="lb-video" controls playsinline></video>
+  <div class="lb-bar">
+    <div class="lb-info">
+      <h4 id="lb-name"></h4>
+      <p id="lb-meta"></p>
+    </div>
+    <div class="lb-actions">
+      <button class="btn btn-ghost" onclick="downloadCurrent()">&#8595; Download</button>
+      <button class="btn btn-ghost" onclick="closeLightbox()">&#10005; Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW TRIP MODAL -->
+<div id="trip-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h3>New Trip</h3>
+    <input type="text" id="trip-name-input" placeholder="e.g. Goa 2024, Paris Trip…" maxlength="40" onkeydown="if(event.key==='Enter')createTrip()">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="createTrip()">Create Trip</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════
+//  DATABASE  — blobs stored directly, NEVER base64
+//  RAM only holds metadata (id, name, size, kind, etc.)
+// ══════════════════════════════════════════════
+const DB_NAME = 'TripGalleryV2', DB_VER = 1;
+let db, trips = [], photos = [], activeTrip = null, lightIdx = 0;
+
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('trips'))
+        d.createObjectStore('trips', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('media')) {
+        const ms = d.createObjectStore('media', { keyPath: 'id' });
+        ms.createIndex('tripId', 'tripId', { unique: false });
+      }
+    };
+    req.onsuccess = e => { db = e.target.result; res(db); };
+    req.onerror = () => rej(req.error);
+  });
+}
+
+function txStore(store, mode = 'readonly') {
+  return db.transaction(store, mode).objectStore(store);
+}
+function dbGetAll(store) {
+  return new Promise((res, rej) => {
+    const r = txStore(store).getAll();
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+function dbPut(store, obj) {
+  return new Promise((res, rej) => {
+    const r = txStore(store, 'readwrite').put(obj);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+function dbDel(store, key) {
+  return new Promise((res, rej) => {
+    const r = txStore(store, 'readwrite').delete(key);
+    r.onsuccess = () => res();
+    r.onerror = () => rej(r.error);
+  });
+}
+// Fetch only the blob for one item on demand — nothing loaded into RAM
+function dbGetBlob(id) {
+  return new Promise((res, rej) => {
+    const r = txStore('media').get(id);
+    r.onsuccess = () => res(r.result ? r.result.blob : null);
+    r.onerror = () => rej(r.error);
+  });
+}
+
+// Boot — load only metadata, never blobs
+openDB().then(async () => {
+  trips = await dbGetAll('trips');
+  const raw = await dbGetAll('media');
+  photos = raw.map(({ id, name, tripId, size, mimeType, kind, added }) => ({
+    id, name, tripId, size, mimeType,
+    kind: kind || (mimeType && mimeType.startsWith('video') ? 'video' : 'photo'),
+    added
+  }));
+  renderSidebar(); renderGallery(); updateStorage();
+});
+
+// ══════════════════════════════════════════════
+//  STORAGE BAR
+// ══════════════════════════════════════════════
+function updateStorage() {
+  const total = photos.reduce((s, p) => s + (p.size || 0), 0);
+  const mb = total / 1048576;
+  const pct = Math.min((mb / (15 * 1024)) * 100, 100);
+  document.getElementById('storage-used').textContent =
+    mb < 1024 ? `${mb.toFixed(1)} MB / 15 GB` : `${(mb / 1024).toFixed(2)} GB / 15 GB`;
+  document.getElementById('bar-fill').style.width = pct.toFixed(2) + '%';
+}
+
+// ══════════════════════════════════════════════
+//  TRIPS
+// ══════════════════════════════════════════════
+function renderSidebar() {
+  const list = document.getElementById('trips-list');
+  list.innerHTML = '';
+  trips.sort((a, b) => a.name.localeCompare(b.name)).forEach(t => {
+    const count = photos.filter(p => p.tripId === t.id).length;
+    const div = document.createElement('div');
+    div.className = 'trip-item' + (activeTrip === t.id ? ' active' : '');
+    div.innerHTML = `<div class="trip-dot"></div><span class="trip-name">${esc(t.name)}</span><span class="trip-count">${count}</span><button class="trip-del" title="Delete trip">&#10005;</button>`;
+    div.querySelector('.trip-del').addEventListener('click', e => deleteTrip(t.id, e));
+    div.addEventListener('click', e => { if (!e.target.classList.contains('trip-del')) selectTrip(t.id); });
+    list.appendChild(div);
+  });
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function selectTrip(id) { activeTrip = id; document.getElementById('all-tab').classList.remove('active'); renderSidebar(); renderGallery(); }
+function showAll() { activeTrip = null; document.getElementById('all-tab').classList.add('active'); renderSidebar(); renderGallery(); }
+
+function openNewTrip() { document.getElementById('trip-modal').style.display = 'flex'; setTimeout(() => document.getElementById('trip-name-input').focus(), 50); }
+function closeModal() { document.getElementById('trip-modal').style.display = 'none'; document.getElementById('trip-name-input').value = ''; }
+
+async function createTrip() {
+  const name = document.getElementById('trip-name-input').value.trim();
+  if (!name) return;
+  const trip = { id: 'trip_' + Date.now(), name, created: Date.now() };
+  await dbPut('trips', trip);
+  trips.push(trip);
+  closeModal(); renderSidebar(); selectTrip(trip.id);
+  toast('Trip created!', 'success');
+}
+async function deleteTrip(id, e) {
+  e.stopPropagation();
+  if (!confirm('Delete this trip and all its media?')) return;
+  for (const p of photos.filter(p => p.tripId === id)) await dbDel('media', p.id);
+  photos = photos.filter(p => p.tripId !== id);
+  await dbDel('trips', id);
+  trips = trips.filter(t => t.id !== id);
+  if (activeTrip === id) activeTrip = null;
+  renderSidebar(); renderGallery(); updateStorage();
+  toast('Trip deleted', 'info');
+}
+
+// ══════════════════════════════════════════════
+//  UPLOAD
+// ══════════════════════════════════════════════
+function triggerUpload()      { document.getElementById('file-input').click(); }
+function triggerVideoUpload() { document.getElementById('video-input').click(); }
+function triggerFolderUpload(){ document.getElementById('folder-input').click(); }
+function isMedia(f) { return f.type.startsWith('image/') || f.type.startsWith('video/'); }
+
+async function handleFolderSelect(files) {
+  if (!files || !files.length) return;
+  const items = Array.from(files).filter(isMedia);
+  if (!items.length) { toast('No photos or videos found in folder', 'info'); return; }
+
+  // Detect folder name from webkitRelativePath (works in Chrome/Edge/Firefox)
+  const firstPath = items.find(f => f.webkitRelativePath)?.webkitRelativePath;
+  const folderName = firstPath ? firstPath.split('/')[0] : ('Folder ' + new Date().toLocaleDateString('en-IN'));
+
+  const useNew = confirm(`Import ${items.length} file(s) from "${folderName}"?\n\nOK = create a new trip named "${folderName}"\nCancel = add to current trip`);
+
+  if (useNew) {
+    // Create or reuse a trip matching the folder name
+    const existing = trips.find(t => t.name === folderName);
+    let tripId = existing ? existing.id : null;
+    if (!tripId) {
+      const trip = { id: 'trip_' + Date.now(), name: folderName, created: Date.now() };
+      await dbPut('trips', trip);
+      trips.push(trip);
+      tripId = trip.id;
+    }
+    activeTrip = tripId;
+    document.getElementById('all-tab').classList.remove('active');
+    renderSidebar();
+  } else {
+    // Add to current trip (activeTrip stays as-is)
+    // If no trip is selected, prompt user to pick one or create one
+    if (!activeTrip && trips.length > 0) {
+      const names = trips.map((t, i) => `${i + 1}. ${t.name}`).join('\n');
+      const choice = prompt(`Which trip to add to? Enter a number:\n${names}\n\n(Or press Cancel to add to "All Media" without a trip)`);
+      const idx = parseInt(choice) - 1;
+      if (!isNaN(idx) && trips[idx]) {
+        activeTrip = trips[idx].id;
+        document.getElementById('all-tab').classList.remove('active');
+        renderSidebar();
+      }
+    }
+  }
+
+  await batchImport(items);
+}
+async function handleFileSelect(files) {
+  if (!files || !files.length) return;
+  const items = Array.from(files).filter(isMedia);
+  if (!items.length) return;
+  await batchImport(items);
+}
+
+async function batchImport(items) {
+  const CHUNK = 8; // small chunks — videos are large files
+  showProgress(items.length);
+  let done = 0;
+  for (let i = 0; i < items.length; i += CHUNK) {
+    const chunk = items.slice(i, i + CHUNK);
+    await Promise.all(chunk.map(f => storeFile(f)));
+    done += chunk.length;
+    updateProgress(done, items.length);
+    renderSidebar(); renderGallery(); updateStorage();
+    await tick();
+  }
+  hideProgress();
+  renderSidebar(); renderGallery(); updateStorage();
+  toast(`${items.length} file${items.length !== 1 ? 's' : ''} imported!`, 'success');
+}
+function tick() { return new Promise(r => setTimeout(r, 0)); }
+
+async function storeFile(file) {
+  const id = 'ph_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const kind = file.type.startsWith('video/') ? 'video' : 'photo';
+  // Store raw Blob/File — IndexedDB handles it natively, NO base64, NO memory explosion
+  await dbPut('media', {
+    id, name: file.name.replace(/\.[^.]+$/, ''),
+    tripId: activeTrip || null,
+    size: file.size, mimeType: file.type,
+    kind, added: Date.now(),
+    blob: file
+  });
+  // Push only the lightweight metadata to RAM
+  photos.push({ id, name: file.name.replace(/\.[^.]+$/, ''), tripId: activeTrip || null, size: file.size, mimeType: file.type, kind, added: Date.now() });
+}
+
+// ══════════════════════════════════════════════
+//  DRAG & DROP
+// ══════════════════════════════════════════════
+function dragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragging'); }
+function dragLeave() { document.getElementById('drop-zone').classList.remove('dragging'); }
+async function handleDrop(e) {
+  e.preventDefault(); dragLeave();
+  const items = e.dataTransfer.items;
+  if (items) {
+    const fileList = [];
+    let detectedFolderName = null;
+    const traverse = (entry, depth) => new Promise(res => {
+      if (entry.isFile) {
+        entry.file(f => { if (isMedia(f)) fileList.push(f); res(); });
+      } else if (entry.isDirectory) {
+        if (depth === 0) detectedFolderName = entry.name;
+        const rdr = entry.createReader();
+        const readAll = () => rdr.readEntries(async ents => {
+          if (!ents.length) { res(); return; }
+          for (const en of ents) await traverse(en, depth + 1);
+          readAll();
+        });
+        readAll();
+      } else res();
+    });
+    showProgress(0);
+    for (const en of Array.from(items).map(i => i.webkitGetAsEntry()).filter(Boolean)) await traverse(en, 0);
+    if (fileList.length) {
+      if (detectedFolderName) {
+        const existing = trips.find(t => t.name === detectedFolderName);
+        let tripId = existing ? existing.id : null;
+        if (!tripId) {
+          const trip = { id: 'trip_' + Date.now(), name: detectedFolderName, created: Date.now() };
+          await dbPut('trips', trip); trips.push(trip); tripId = trip.id;
+        }
+        activeTrip = tripId;
+        document.getElementById('all-tab').classList.remove('active');
+        renderSidebar();
+      }
+      await batchImport(fileList);
+    } else hideProgress();
+  } else { handleFileSelect(e.dataTransfer.files); }
+}
+
+// ══════════════════════════════════════════════
+//  GALLERY  — renders PAGE_SIZE cards at a time
+//  Images/videos load lazily via IntersectionObserver
+// ══════════════════════════════════════════════
+const PAGE_SIZE = 60;
+let visiblePage = 1;
+let currentVisible = [];
+const blobCache = new Map(); // id → objectURL (revoked on gallery clear)
+let sentinelObs = null;
+
+function getVisible() {
+  return (activeTrip === null ? photos : photos.filter(p => p.tripId === activeTrip))
+    .sort((a, b) => b.added - a.added);
+}
+
+function renderGallery() {
+  currentVisible = getVisible();
+  visiblePage = 1;
+
+  // Revoke all blob URLs from previous view to free memory
+  blobCache.forEach(url => URL.revokeObjectURL(url));
+  blobCache.clear();
+
+  const grid = document.getElementById('gallery');
+  const empty = document.getElementById('empty-state');
+  const t = trips.find(t => t.id === activeTrip);
+  const photoCnt = currentVisible.filter(p => p.kind !== 'video').length;
+  const videoCnt = currentVisible.filter(p => p.kind === 'video').length;
+
+  document.getElementById('view-title').textContent = t ? t.name : 'All Media';
+  let sub = `${currentVisible.length} item${currentVisible.length !== 1 ? 's' : ''}`;
+  if (photoCnt && videoCnt) sub += ` · ${photoCnt} photo${photoCnt!==1?'s':''}, ${videoCnt} video${videoCnt!==1?'s':''}`;
+  document.getElementById('view-subtitle').textContent = sub;
+  document.getElementById('dl-all-btn').style.display = currentVisible.length ? 'inline-flex' : 'none';
+  document.getElementById('select-mode-btn').style.display = currentVisible.length ? 'inline-flex' : 'none';
+
+  grid.innerHTML = '';
+  empty.style.display = currentVisible.length ? 'none' : 'flex';
+  if (selectMode) { selectedIds.clear(); updateSelectBar(); }
+
+  appendPage(grid);
+  setupSentinel();
+}
+
+function appendPage(grid) {
+  const start = (visiblePage - 1) * PAGE_SIZE;
+  currentVisible.slice(start, start + PAGE_SIZE).forEach((p, i) => {
+    grid.appendChild(buildCard(p, start + i));
+  });
+}
+
+function buildCard(p, globalIdx) {
+  const card = document.createElement('div');
+  card.className = 'media-card' + (selectMode ? ' selectable' : '');
+  if (selectMode && selectedIds.has(p.id)) card.classList.add('selected');
+  card.dataset.id = p.id;
+
+  // Shimmer placeholder
+  const shimmer = document.createElement('div');
+  shimmer.className = 'shimmer';
+  card.appendChild(shimmer);
+
+  // Lazy load blob only when card enters viewport
+  const obs = new IntersectionObserver(entries => {
+    if (!entries[0].isIntersecting) return;
+    obs.disconnect();
+    loadCardMedia(p, card, shimmer);
+  }, { rootMargin: '300px' });
+  obs.observe(card);
+
+  // Overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'media-overlay';
+  overlay.innerHTML = `<div class="media-name">${esc(p.name)}</div><div class="media-meta">${formatDate(p.added)}${p.size ? ' · ' + formatSize(p.size) : ''}</div>`;
+  card.appendChild(overlay);
+
+  // Video badge
+  if (p.kind === 'video') {
+    const badge = document.createElement('div');
+    badge.className = 'video-badge';
+    badge.innerHTML = `<span class="play-tri"></span>VIDEO`;
+    card.appendChild(badge);
+  }
+
+  // Select checkbox
+  const chk = document.createElement('div');
+  chk.className = 'select-check';
+  chk.textContent = '✓';
+  card.appendChild(chk);
+
+  // Delete button
+  const acts = document.createElement('div');
+  acts.className = 'media-actions';
+  const delBtn = document.createElement('button');
+  delBtn.className = 'pa-btn del';
+  delBtn.title = 'Delete';
+  delBtn.textContent = '✕';
+  delBtn.addEventListener('click', e => { e.stopPropagation(); deleteMedia(p.id); });
+  acts.appendChild(delBtn);
+  card.appendChild(acts);
+
+  card.addEventListener('click', e => {
+    if (selectMode) { e.stopPropagation(); toggleSelect(p.id, card); }
+    else openLightbox(globalIdx);
+  });
+  return card;
+}
+
+async function loadCardMedia(p, card, shimmer) {
+  try {
+    const blob = await dbGetBlob(p.id);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    blobCache.set(p.id, url);
+    shimmer.remove();
+
+    if (p.kind === 'video') {
+      const vid = document.createElement('video');
+      vid.src = url; vid.muted = true; vid.preload = 'metadata'; vid.playsInline = true;
+      vid.addEventListener('loadedmetadata', () => { vid.currentTime = 0.5; });
+      card.insertBefore(vid, card.firstChild);
+      card.addEventListener('mouseenter', () => vid.play().catch(() => {}));
+      card.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0.5; });
+    } else {
+      const img = document.createElement('img');
+      img.src = url; img.alt = esc(p.name); img.loading = 'lazy';
+      card.insertBefore(img, card.firstChild);
+    }
+  } catch (err) { /* silent */ }
+}
+
+function setupSentinel() {
+  if (sentinelObs) sentinelObs.disconnect();
+  const sentinel = document.getElementById('load-more-sentinel');
+  sentinelObs = new IntersectionObserver(entries => {
+    if (!entries[0].isIntersecting) return;
+    if (visiblePage * PAGE_SIZE >= currentVisible.length) return;
+    visiblePage++;
+    appendPage(document.getElementById('gallery'));
+  }, { rootMargin: '400px' });
+  sentinelObs.observe(sentinel);
+}
+
+// ══════════════════════════════════════════════
+//  DELETE
+// ══════════════════════════════════════════════
+async function deleteMedia(id) {
+  await dbDel('media', id);
+  if (blobCache.has(id)) { URL.revokeObjectURL(blobCache.get(id)); blobCache.delete(id); }
+  photos = photos.filter(p => p.id !== id);
+  renderSidebar(); renderGallery(); updateStorage();
+  toast('Item removed', 'info');
+}
+
+// ══════════════════════════════════════════════
+//  LIGHTBOX  (works for both photos and videos)
+// ══════════════════════════════════════════════
+let lbCurrentUrl = null;
+
+async function openLightbox(idx) {
+  lightIdx = idx;
+  await renderLightbox();
+  document.getElementById('lightbox').classList.add('open');
+  document.addEventListener('keydown', lbKey);
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.removeEventListener('keydown', lbKey);
+  const vid = document.getElementById('lb-video');
+  vid.pause(); vid.src = '';
+  if (lbCurrentUrl) { URL.revokeObjectURL(lbCurrentUrl); lbCurrentUrl = null; }
+}
+function lbKey(e) {
+  if (e.key === 'ArrowLeft') navLight(-1);
+  if (e.key === 'ArrowRight') navLight(1);
+  if (e.key === 'Escape') closeLightbox();
+}
+async function navLight(dir) {
+  lightIdx = (lightIdx + dir + currentVisible.length) % currentVisible.length;
+  await renderLightbox();
+}
+async function renderLightbox() {
+  const p = currentVisible[lightIdx];
+  if (!p) return;
+  const img = document.getElementById('lb-img');
+  const vid = document.getElementById('lb-video');
+  img.classList.remove('active'); vid.classList.remove('active');
+  vid.pause(); vid.src = '';
+  if (lbCurrentUrl) { URL.revokeObjectURL(lbCurrentUrl); lbCurrentUrl = null; }
+
+  document.getElementById('lb-name').textContent = p.name;
+  document.getElementById('lb-meta').textContent =
+    `${p.kind === 'video' ? '🎬' : '📷'} ${formatDate(p.added)} · ${formatSize(p.size || 0)} · ${lightIdx + 1} / ${currentVisible.length}`;
+
+  const blob = await dbGetBlob(p.id);
+  if (!blob) return;
+  lbCurrentUrl = URL.createObjectURL(blob);
+
+  if (p.kind === 'video') {
+    vid.src = lbCurrentUrl; vid.classList.add('active');
+    vid.load(); vid.play().catch(() => {});
+  } else {
+    img.src = lbCurrentUrl; img.classList.add('active');
+  }
+}
+async function downloadCurrent() {
+  const p = currentVisible[lightIdx]; if (!p) return;
+  const blob = await dbGetBlob(p.id); if (!blob) return;
+  const ext = p.mimeType ? '.' + p.mimeType.split('/')[1].replace(/;.*/, '') : (p.kind === 'video' ? '.mp4' : '.jpg');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = p.name + ext; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast('Downloading…', 'success');
+}
+
+// ══════════════════════════════════════════════
+//  DOWNLOAD ALL (ZIP) — streams blobs, no base64
+// ══════════════════════════════════════════════
+async function downloadAll() {
+  if (!currentVisible.length) { toast('No media to download', 'info'); return; }
+  const btn = document.getElementById('dl-all-btn');
+  btn.textContent = '⏳ Zipping…'; btn.disabled = true;
+  try {
+    const zip = new JSZip();
+    const counts = {};
+    for (const p of currentVisible) {
+      const blob = await dbGetBlob(p.id); if (!blob) continue;
+      const ext = p.mimeType ? '.' + p.mimeType.split('/')[1].replace(/;.*/, '') : (p.kind === 'video' ? '.mp4' : '.jpg');
+      let fn = (p.name || 'file') + ext;
+      if (counts[fn]) { counts[fn]++; fn = (p.name || 'file') + '_' + counts[fn] + ext; } else counts[fn] = 1;
+      zip.file(fn, blob);
+    }
+    const folderName = trips.find(t => t.id === activeTrip)?.name || 'All Media';
+    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a'); a.href = url; a.download = folderName.replace(/[^a-z0-9_\- ]/gi, '_') + '.zip'; a.click();
+    URL.revokeObjectURL(url);
+    toast(`${currentVisible.length} files zipped!`, 'success');
+  } catch (err) { toast('ZIP failed: ' + err.message, 'info'); }
+  btn.textContent = '⬇ Download All'; btn.disabled = false;
+}
+
+// ══════════════════════════════════════════════
+//  SELECT MODE
+// ══════════════════════════════════════════════
+let selectMode = false;
+const selectedIds = new Set();
+
+function toggleSelectMode() {
+  selectMode = !selectMode; selectedIds.clear();
+  const btn = document.getElementById('select-mode-btn');
+  btn.textContent = selectMode ? '✕ Cancel' : '☑ Select';
+  btn.style.borderColor = selectMode ? 'var(--red)' : '';
+  btn.style.color = selectMode ? 'var(--red)' : '';
+  document.getElementById('select-bar').classList.toggle('active', selectMode);
+  renderGallery();
+}
+function toggleSelect(id, card) {
+  if (selectedIds.has(id)) { selectedIds.delete(id); card.classList.remove('selected'); }
+  else { selectedIds.add(id); card.classList.add('selected'); }
+  updateSelectBar();
+}
+function selectAll() {
+  currentVisible.forEach(p => selectedIds.add(p.id));
+  document.querySelectorAll('.media-card.selectable').forEach(c => c.classList.add('selected'));
+  updateSelectBar();
+}
+function deselectAll() {
+  selectedIds.clear();
+  document.querySelectorAll('.media-card.selectable').forEach(c => c.classList.remove('selected'));
+  updateSelectBar();
+}
+function updateSelectBar() {
+  const n = selectedIds.size;
+  document.getElementById('select-count').textContent =
+    n === 0 ? 'Tap items to select' : `${n} item${n !== 1 ? 's' : ''} selected`;
+}
+async function deleteSelected() {
+  if (!selectedIds.size) { toast('No items selected', 'info'); return; }
+  if (!confirm(`Delete ${selectedIds.size} item${selectedIds.size !== 1 ? 's' : ''}? Cannot be undone.`)) return;
+  const ids = [...selectedIds];
+  for (const id of ids) {
+    await dbDel('media', id);
+    if (blobCache.has(id)) { URL.revokeObjectURL(blobCache.get(id)); blobCache.delete(id); }
+  }
+  photos = photos.filter(p => !ids.includes(p.id));
+  selectedIds.clear(); selectMode = false;
+  document.getElementById('select-bar').classList.remove('active');
+  const btn = document.getElementById('select-mode-btn');
+  btn.textContent = '☑ Select'; btn.style.borderColor = ''; btn.style.color = '';
+  renderSidebar(); renderGallery(); updateStorage();
+  toast(`${ids.length} item${ids.length !== 1 ? 's' : ''} deleted`, 'info');
+}
+
+// ══════════════════════════════════════════════
+//  PROGRESS
+// ══════════════════════════════════════════════
+function showProgress(total) {
+  document.getElementById('progress-wrap').classList.add('show');
+  document.getElementById('prog-fill').style.width = '0%';
+  document.getElementById('prog-count').textContent = '0%';
+  document.getElementById('prog-label').textContent = total ? `Importing 0 of ${total}…` : 'Scanning…';
+}
+function updateProgress(done, total) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById('prog-fill').style.width = pct + '%';
+  document.getElementById('prog-count').textContent = pct + '%';
+  document.getElementById('prog-label').textContent = `Importing ${done} of ${total}…`;
+}
+function hideProgress() { setTimeout(() => document.getElementById('progress-wrap').classList.remove('show'), 900); }
+
+// ══════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════
+function formatDate(ts) { return new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); }
+function formatSize(b) { return b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`; }
+
+// ══════════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════════
+let toastTimer;
+function toast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = (type === 'success' ? '✓ ' : 'ℹ ') + msg;
+  t.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 3200);
+}
+</script>
+</body>
+</html>
